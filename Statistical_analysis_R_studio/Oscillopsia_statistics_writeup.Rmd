@@ -1,0 +1,365 @@
+---
+title: "Oscillopisa session statistics"
+author: "Iona McLean"
+date: "2022-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+#Load in packages
+library(stats)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(reshape2)#used for Cochran Q
+library(psych)#used for Cochran Q
+library(RVAideMemoire)#Cochran Q
+library(ez) # within subjects anova
+library(knitr) # makes nicely formatted tables
+library(scales) # nicely formatted numbers
+library(car) #used for Levene test for homoginety
+library(lmPerm)
+
+#load the data 
+Osc_all                = read.csv(file='./data/Osc_all.csv',header=TRUE)
+Osc_motion_range_anova = read.csv(file='./data/Osc_anova.csv',header=TRUE) #motion range data formatted for an anova
+
+#label the data
+Osc_motion_range = Osc_all[(Osc_all$measure == 1),2:6] 
+Osc_motion_score = Osc_all[(Osc_all$measure == 2),2:6]
+Oscwear          = Osc_all[(Osc_all$measure == 3),2:6]
+Oscrank          = Osc_all[(Osc_all$measure == 4),2:6]
+
+
+################# FUNCTION USED FOR MEAN MEDIAN CREATION
+
+#Function for a mean and median table. Input a data matrix with responeses for each lens
+mean_and_median_table = function(data) {
+
+  N = 40
+  Mean_all   = tidy(apply(data,2,mean)) #I need tidy to create the table/data frame thing
+  Median_all = apply(data,2,median)
+  SD_all     = apply(data,2,sd)
+  CI_all     = (1.96 * SD_all) / sqrt(N)
+
+  rename(Mean_all, M = x) %>% #rename mean column to M
+  mutate(Mean_all, Mdn = Median_all, CI_95 = CI_all) %>% #add column with median values named Mdn
+
+  select(names,M,Mdn,CI_95) %>% 
+    
+  kable() #makes the table output in the html
+  
+}
+
+################ FUNCTIONS FOR WILCOXON TESTS 
+
+# Run Wilcox test, calculate effect size
+# and Tidy the table and rename or add columns for V,Z,N,r
+make_wilcox_table = function(a, b) {
+  
+ this_test = wilcox.test(a, b, paired = TRUE) #it has a continuity correction
+ # we decided to use wilcox.test, instead of wilcox_test because it seems to be more common
+ # and has continuity correction. The Z values produced in each are slightly different 
+ # likely due to the various corrections
+ 
+    this_test_tidy   = tidy(this_test) 
+    this_test_tidy_v = rename(this_test_tidy, V = statistic)  #renames "statistic" as "V" in the next line
+    #add columns to store the Z,N,and r values.
+    mutate(this_test_tidy_v,
+      V = label_number(accuracy = 0.001)(V),
+      Z = qnorm(p.value/2),
+      N = length(a),
+      r = abs(Z) / sqrt(N) 
+    ) 
+}
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test
+# %>% puts current output as first next input
+run_wilcox_test <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_wilcox_table(data[,len1_str], data[,len2_str])  #run previous function that runs willcox test 
+    
+    mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,V,N,Z,r,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+################ FUNCTIONS THAT RUN T TESTS
+
+# T-tests and effect size (Cohan's d)
+make_ttest_table = function(a, b, len1_str,len2_str) {
+  
+ this_test = t.test(a,b,paired = TRUE, alterative = "two.sided")
+ 
+    this_test_tidy   = tidy(this_test) 
+    this_test_tidy2  = rename(this_test_tidy, t = statistic, df = parameter)  
+    
+    #calculate effect size - Cohan's D
+    # I need to create a vector of the data and a list of factors to run the test
+    y     = c(a,b)
+    group = factor(rep(c(len1_str,len2_str),each = 40))
+    df    = data.frame(group,y) #create a data frame with both values
+    
+    # Try to get Cohen's D but if it fails, spit out an NA
+    d = tryCatch(
+      {
+        # the output includes the upper and lower confidence intervals,
+        # but we will just use d
+        cohen.d(y, group, data = df)$cohen.d[2] 
+      },
+      error = function(cond) {
+        return(NA)
+      }
+    )
+    
+    #add columns 
+    mutate(this_test_tidy2,Cohans_d = d) 
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test
+# %>% puts current output as first next input
+run_ttest_test <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_ttest_table(data[,len1_str], data[,len2_str], len1_str, len2_str)  #run previous function that runs willcox test 
+    
+    mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,t,df,Cohans_d,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+################ FUNCTIONS FOR McNemar TESTS 
+
+# Run Mcnemar test, calculate effect size
+mcnemar_test = function(a, b) {
+  
+  
+  this_test = mcnemar.test(a,b, correct = TRUE)
+
+    this_test_tidy     = tidy(this_test) 
+    
+    this_test_tidy_chi = rename(this_test_tidy, chi_sqared = statistic) #rename the statistic chi_squared
+    
+    #effect size - odds ratio #there is not a good consensus on the best effect 
+    #size measure
+    #take the lens that we hypothesize more people will be wiling to wear and 
+    # divide it by the group we hypothesize will have less. The group that we 
+    # think will always have more "yeses" happens to always be the first lens string 
+    #size value will always be greater than 1. 
+    Odds_ratio = (sum(a) / sum(b)) #ratio of the people who said yes to Lens1 vs Lens2
+  
+  
+   #add columns to store the effect size
+   mutate(this_test_tidy_chi, Odds_ratio = Odds_ratio) 
+  
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test # %>% puts current output as first next input
+run_mcnemar_test_and_table <- function (len1_str, len2_str, data) { 
+  
+  mcnemar_test(data[,len1_str], data[,len2_str])%>%  #run previous function to run the statistical test
+    
+    mutate(Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,chi_sqared,df = parameter, Odds_ratio,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+
+
+########### PERCENT AND BINOMIAL CI FOR PERCENT FOR Y/N QUESTION
+do_binomial_test <- function(cond, thisdata, ...) { #... allows extra variables to pass to the binomial function
+  binom.test( sum(thisdata[,cond]) , n = length(thisdata[,cond]), ... ) %>%
+    tidy()
+}
+
+```
+
+# Motion score 
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(Osc_motion_score) #runs function that creates a table with mean and medians
+
+```
+
+## Friedman test
+```{r, warning=FALSE, echo=FALSE}
+Osc_motion_score_FR = friedman.test(data.matrix(Osc_motion_score))
+kable(tidy(Osc_motion_score_FR))
+```
+## Paired Wilcox Tests
+
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = Osc_motion_score
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+# Motion Rank 
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(Oscrank) #runs function that creates a table with mean and medians
+```
+
+## Friedman test
+```{r, warning=FALSE, echo=FALSE}
+Oscrank_FR = friedman.test(data.matrix(Oscrank))
+kable(tidy(Oscrank_FR))
+```
+## Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = Oscrank
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+# Motion range 
+
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(Osc_motion_range) #runs function that creates a table with mean and medians
+
+```
+
+## ANOVA & Tukey test
+```{r, warning=FALSE, echo=FALSE}
+Osc_motion_range_anova$subj   = as.factor(Osc_motion_range_anova$subj)
+Osc_motion_range_anova$lenses = as.factor(Osc_motion_range_anova$lenses)
+fitF = ezANOVA(data = Osc_motion_range_anova, dv = resp, within = lenses, wid = subj)
+Osc_motion_range_anova_fit = fitF$ANOVA
+kable(Osc_motion_range_anova_fit)
+
+```
+#CHECK FOR HOMOGENEITY by running the Leven test. 
+```{r, warning=FALSE, echo=FALSE}
+res_leven = leveneTest(resp ~ lenses , data = Osc_motion_range_anova)
+# it is significant which means that there is different levels of variance 
+#in the groups. So, we will run a permutation ANOVA which are not based on 
+#assumptions of homogeneity to see if we get the same results. 
+res = aovp(resp ~ lenses, data = Osc_motion_range_anova)
+summary(res)
+# The same results are significant so we will just present the results of the 
+# original ANOVA in text. 
+
+
+```
+## t-tests
+
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_ttest_test,
+  
+  data = Osc_motion_range
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+
+# Wear on a Regular Basis? (Y/N) 
+## Median and binomial CI
+```{r, warning=FALSE, echo=FALSE}
+
+conds = c("X00", "X22", "X02", "X44", "X04") #identifies condition we iterate over
+conds %>% #inputs conditions into next function
+  map_df(                    #iterates over conditions in first input(i.e.cond)
+    do_binomial_test,        #runs function at the top
+    thisdata = Oscwear,
+    p = 0.05,
+    alternative = "two.sided"
+  ) %>%
+  
+  mutate(
+    condition    = conds,
+    percent_yes  = percent_format(accuracy = 0.001)(estimate), #percent_format is a function to format percents #estimate is the variable
+    low_95pctCI  = percent_format(accuracy = 0.001)(conf.low),
+    high_95pctCI = percent_format(accuracy = 0.001)(conf.high),
+    range_95pCI  = percent_format(accuracy = 0.001)(conf.high - conf.low)
+  ) %>%
+  #select columns you want in table
+  select(condition, percent_yes, low_95pctCI, high_95pctCI,range_95pCI) %>%
+  kable()
+
+```
+
+## Cochran q 
+```{r, warning=FALSE, echo=FALSE}
+Oscwear_q = melt(data.matrix(Oscwear)) #reshape the data 
+oscwear_cochran = cochran.qtest(value ~ Var2 | Var1, data = Oscwear_q)
+kable(tibble(
+  "test"    = oscwear_cochran$method.test,
+  "Q"       = oscwear_cochran$statistic,
+  "df"      = oscwear_cochran$parameter,
+  "p-value" = format(oscwear_cochran$p.value, scientific = TRUE)
+))
+```
+
+## Mcnemar tests 
+```{r, warning=FALSE, echo=FALSE}
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_mcnemar_test_and_table,
+  
+  data = Oscwear
+) %>% # takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
