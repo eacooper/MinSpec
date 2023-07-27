@@ -95,19 +95,18 @@ writetable(NatSymp_HDN_t,strcat(csv_save_path,'\NatSymp_HDN.csv'));
 lensindicator = repelem((1:5)',40);
 NatSymp_HDN_col_t = array2table([lensindicator,NatSymp_HDN_col_data], 'VariableNames',{'len','Headache','Dizziness','Nausea'});
 writetable(NatSymp_HDN_col_t,strcat(csv_save_path,'\NatSymp_HDN_col.csv'));
-
 %Phoria difference scores for initial wear of the lenses - pre minus baseline 
 % for horizontal and vertical phoria.reformat the data for horizontal and vertical phoria.
 NatHPhoria_diff =[]; NatVPhoria_diff =[];
 %Phoria adaptation (post-pre) 
 NatHPhoria_adapt = [];
 NatVPhoria_adapt = [];
-for headturn = 1:5
+for len = 1:5
     AllLenH_dif = [];
     AllLenV_dif = [];
     AllLenH_adapt = [];
     AllLenV_adapt = [];
-    for len = 1:5
+    for headturn = 1:5
         %making a column of one head turn for all subjects for all lenses
         AllLenH_dif = [AllLenH_dif; NatHPhoria_prebase(:,headturn,len)]; 
         AllLenV_dif = [AllLenV_dif; NatVPhoria_prebase(:,headturn,len)]; 
