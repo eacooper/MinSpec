@@ -1,0 +1,1277 @@
+---
+title: "Exploritory Analysis"
+author: "Iona McLean"
+date: "2022-12-13"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls()) #clear global workspace
+
+#Load in packages
+library(stats)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(reshape2)
+library(psych)
+library(RVAideMemoire)
+library(ez) 
+library(knitr) 
+library(scales)
+library(car)
+library(lmPerm)
+
+#you have to set the current directory.
+#setwd("G:/Shared drives/Project MinSpec/Running_Participants/Data/Analysis/Statistical_analysis_using_R")
+
+#LOAD IN DATA
+
+# Phoria difference between pre-baseline to see initial effects of lenses
+#ANOVA format of data
+NatHPhoria_diff_ANOVA = read.csv(file='./data/NatHPhoria_diff_ANOVA.csv',header=TRUE)
+NatVPhoria_diff_ANOVA = read.csv(file='./data/NatVPhoria_diff_ANOVA.csv',header=TRUE)
+
+# t-test format of data
+NatHPhoria_diff = read.csv(file='./data/NatHPhoria_diff.csv',header=TRUE)
+NatVPhoria_diff = read.csv(file='./data/NatVPhoria_diff.csv',header=TRUE)
+
+#Phoria adaptation difference between post-pre
+#anova format
+NatHPhoria_adapt_ANOVA = read.csv(file='./data/NatHPhoria_adapt_ANOVA.csv',header=TRUE)
+NatVPhoria_adapt_ANOVA = read.csv(file='./data/NatVPhoria_adapt_ANOVA.csv',header=TRUE)
+#t-test format
+NatHPhoria_adapt = read.csv(file='./data/NatHPhoria_adapt.csv',header=TRUE)
+NatVPhoria_adapt = read.csv(file='./data/NatVPhoria_adapt.csv',header=TRUE)
+
+#Phoria - baseline for all distances (40cm,1m,6m) only straight ahead
+NatPhoria_allDist_straight = read.csv(file='./data/NatPhoria_allDist_straight.csv',header=TRUE)
+
+#Naturalistic symptoms
+#Perceptual questions organized based on questions used for pos-hoc swim analysis
+NatSymp_HDN_col = read.csv(file='./data/NatSymp_HDN_col.csv',header=TRUE) #Not baseline corrected
+#Physical symptoms organized by symptom - used for post-hoc dizziness analysis 
+NatPerceptQs_col = read.csv(file='./data/NatPerceptQs_col.csv',header=TRUE) #row=Q col= H,D,orN 
+NatSymp_HDN = read.csv(file='./data/NatSymp_HDN.csv',header=TRUE) #Not baseline corrected #row=subj and H,D,orN col=lenses
+NatPerceptQs = read.csv(file='./data/NatPerceptQs.csv',header=TRUE) #row=subj and H,D,orN col=lenses
+#Naturalistic symptoms that includes eye strain
+Nat_sympQs = read.csv(file='./data/Nat_sympQs.csv',header=TRUE) #corrected from
+
+#VOMS Dizziness
+VOMSSymp_D = read.csv(file='./data/VOMSSymp_D.csv',header=TRUE) #baseline corrected
+
+#Fusional reserve
+Fusional_reserve= read.csv(file='./data/Fusional_reserve.csv',header=TRUE) 
+
+#Motion Sickness Susceptibility Questionnaire
+SSQ = read.csv(file='./data/SSQ.csv',header=TRUE)
+
+
+# Labeling data
+
+# it is broken down in a lens centric way because I will be plotting those averages
+NatSymp_H = NatSymp_HDN[(NatSymp_HDN$measure == 1),2:6] #headache for every subj
+NatSymp_D = NatSymp_HDN[(NatSymp_HDN$measure == 2),2:6] #dizziness for every subj
+NatSymp_N = NatSymp_HDN[(NatSymp_HDN$measure == 3),2:6] #nausea for every subj
+
+#Initial horizontal and vertical phoria for different gaze directions
+#The letters after the variables indicate the direction that the eyes turn NOT 
+#the head turns.
+#horizontal phoria
+NatHPhoria_s = NatHPhoria_diff[which(NatHPhoria_diff$headturn==1),3:7] #straight 
+NatHPhoria_l = NatHPhoria_diff[which(NatHPhoria_diff$headturn==2),3:7] #right head turn (left gaze)
+NatHPhoria_r = NatHPhoria_diff[which(NatHPhoria_diff$headturn==3),3:7] #left head turn (right gaze)
+NatHPhoria_d = NatHPhoria_diff[which(NatHPhoria_diff$headturn==4),3:7] #up head turn (down gaze)
+NatHPhoria_u = NatHPhoria_diff[which(NatHPhoria_diff$headturn==5),3:7] #down head turn (up gaze)
+#vertical phoria
+NatVPhoria_s = NatVPhoria_diff[which(NatVPhoria_diff$headturn==1),3:7] #straight head turn 
+NatVPhoria_l = NatVPhoria_diff[which(NatVPhoria_diff$headturn==2),3:7] #right head turn 
+NatVPhoria_r = NatVPhoria_diff[which(NatVPhoria_diff$headturn==3),3:7] #left head turn 
+NatVPhoria_d = NatVPhoria_diff[which(NatVPhoria_diff$headturn==4),3:7] #up  head turn 
+NatVPhoria_u = NatVPhoria_diff[which(NatVPhoria_diff$headturn==5),3:7] #down head turn 
+
+#Phoria adaptation for different gaze directions
+NatHPhoria_adapt_s = NatHPhoria_adapt[which(NatHPhoria_adapt$headturn==1),3:7] #straight 
+NatHPhoria_adapt_l = NatHPhoria_adapt[which(NatHPhoria_adapt$headturn==2),3:7] #right head turn (leftward gaze)
+NatHPhoria_adapt_r = NatHPhoria_adapt[which(NatHPhoria_adapt$headturn==3),3:7] #left head turn (rightward gaze)
+NatHPhoria_adapt_d = NatHPhoria_adapt[which(NatHPhoria_adapt$headturn==4),3:7] #up head turn (downward gaze)
+NatHPhoria_adapt_u = NatHPhoria_adapt[which(NatHPhoria_adapt$headturn==5),3:7] #down head turn (upward gaze)
+#vertical
+NatVPhoria_adapt_s = NatVPhoria_adapt[which(NatVPhoria_adapt$headturn==1),3:7] #straight 
+NatVPhoria_adapt_l = NatVPhoria_adapt[which(NatVPhoria_adapt$headturn==2),3:7] #right head turn (leftward gaze)
+NatVPhoria_adapt_r = NatVPhoria_adapt[which(NatVPhoria_adapt$headturn==3),3:7] #left head turn (rightward gaze)
+NatVPhoria_adapt_d = NatVPhoria_adapt[which(NatVPhoria_adapt$headturn==4),3:7] #up head turn (downward gaze)
+NatVPhoria_adapt_u = NatVPhoria_adapt[which(NatVPhoria_adapt$headturn==5),3:7] #down head turn (upward gaze)
+
+#Baseline phoria for all distances
+NatPhoria_base_40cm = NatPhoria_allDist_straight[which(NatPhoria_allDist_straight$dist==1),2:3]
+NatPhoria_base_1m = NatPhoria_allDist_straight[which(NatPhoria_allDist_straight$dist==2),2:3]
+NatPhoria_base_6m = NatPhoria_allDist_straight[which(NatPhoria_allDist_straight$dist==3),2:3]
+
+#Fusional reserve
+FR_H_6m = Fusional_reserve[which(Fusional_reserve$type==1),2:3] #horizontal fusional reserve at 6m
+FR_V_6m = Fusional_reserve[which(Fusional_reserve$type==2),2:3]
+FR_H_40cm = Fusional_reserve[which(Fusional_reserve$type==3),2:3]
+FR_V_40cm = Fusional_reserve[which(Fusional_reserve$type==4),2:3]
+
+#Eye strain
+Nateyestrain = Nat_sympQs[(Nat_sympQs$measure == 3),2:6] 
+
+################# FUNCTION USED FOR MEAN MEDIAN CREATION
+
+#Function for a mean and median table. Input a data matrix with responses for each lens
+mean_and_median_table = function(data) {
+
+  N = 40
+  Mean_all = tidy(apply(data,2,mean)) #I need tidy to create the table/data frame thing
+  Median_all = apply(data,2,median)
+  SD_all = apply(data,2,sd)
+  CI_all = (1.96 * SD_all) / sqrt(N)
+
+  rename(Mean_all, M = x) %>% #rename mean column to M
+  mutate(Mean_all, Mdn = Median_all, CI_95 = CI_all) %>% #add column with median values named Mdn
+
+  select(names,M,Mdn,CI_95) %>% #for some reason the original x column is still there so I will select out the variables I want
+    
+  kable() #makes the table output in the html
+  
+}
+
+################ FUNCTIONS FOR WILCOXON TESTS 
+
+# Run Wilcox test, calculate effect size
+# and Tidy the table and rename or add columns for V,Z,N,r
+make_wilcox_table = function(a, b) {
+  
+ this_test = wilcox.test(a, b, paired = TRUE) #it has a continuity correction
+ # we decided to use wilcox.test, instead of wilcox_test because it seems to be more common
+ # and has continuity correction. The Z values produced in each are slightly different 
+ # likely due to the various corrections
+ 
+    this_test_tidy   = tidy(this_test) 
+    this_test_tidy_v = rename(this_test_tidy, V = statistic)  #renames "statistic" as "V" in the next line
+    #add columns to store the Z,N,and r values.
+    mutate(this_test_tidy_v,
+      V = label_number(accuracy = 0.001)(V),
+      Z = qnorm(p.value/2),
+      N = length(a),
+      r = abs(Z) / sqrt(N) 
+    ) 
+}
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test
+# %>% puts current ouput as first next input
+run_wilcox_test <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_wilcox_table(data[,len1_str], data[,len2_str])  #run previous function that runs willcox test 
+    
+    mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,V,N,Z,r,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+################ FUNCTIONS THAT RUN T TESTS
+
+# T-tests and effect size (Cohan's d)
+make_ttest_table = function(a, b, len1_str,len2_str) {
+  
+ this_test = t.test(a,b,paired = TRUE, alterative = "two.sided")
+ 
+    this_test_tidy   = tidy(this_test) 
+    this_test_tidy2 = rename(this_test_tidy, t = statistic, df = parameter)  
+    
+    #calculate effect size - Cohan's D
+    # I need to create a vectof of the data and a list of factors to run the test
+    y = c(a,b)
+    group = factor(rep(c(len1_str,len2_str),each = 40))
+    df = data.frame(group,y) #create a data frame with both values
+    
+    # Try to get Cohen's D but if it fails, spit out an NA
+    d = tryCatch(
+      {
+        # the output includes the upper and lower confidence intervals,
+        # but we will just use d
+        cohen.d(y, group, data = df)$cohen.d[2] 
+      },
+      error = function(cond) {
+        return(NA)
+      }
+    )
+      
+    
+    #add columns 
+    mutate(this_test_tidy2,Cohans_d = d) 
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the t test test
+# %>% puts current output as first next input
+run_ttest_test <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_ttest_table(data[,len1_str], data[,len2_str], len1_str, len2_str)  #run previous function that runs t test 
+    
+    mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,t,df,Cohans_d,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+
+################ FUNCTIONS FOR SPEARMAN CORRELATION
+
+# Run Wilcox test, calculate effect size
+# and Tidy the table and rename or add columns 
+make_spearman_table = function(a, b) {
+  
+  this_test = cor.test(a, b, method = "spearman", alternative = "two.sided") 
+  #using spearman correlation because data is not normally distributed.
+  #The warning about ties relates to the fact that it will ignore values of the same ranks 
+  #when calculating p values. 
+  
+  this_test_tidy   = tidy(this_test) 
+  print(this_test)
+  this_test_tidy_r = rename(this_test_tidy, r = estimate)  #renames "estimate" "r"
+  #specify how many decimal places for r
+  mutate(this_test_tidy_r,
+         r = label_number(accuracy = 0.0001)(r)) 
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns in the output
+# %>% puts current ouput as first next input
+run_spearman_cor <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_spearman_table(data[,len1_str], data[,len2_str])  #run previous function that runs willcox test 
+  
+  mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,r,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+
+```
+
+# Naturalistic Session post-hoc analysis on swim
+## Perceptual symptoms pooled across lenses (excluding 0,0)
+### Median and mean
+
+```{r, warning=TRUE, echo=FALSE}
+
+mean_and_median_table(NatPerceptQs_col[(NatPerceptQs_col[,1]>1),2:7]) #runs function that creates a table with mean and medians
+```
+
+### Friedman Test
+```{r, warning=FALSE, echo=FALSE}
+
+Natpercept_col_FR = friedman.test(data.matrix(NatPerceptQs_col[(NatPerceptQs_col[,1]>1),2:7]))
+kable(tidy(Natpercept_col_FR))
+
+```
+### Paired Wilcox Tests - comparision between swim and others (not all comparisions are made)
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(  
+  c("Swim",       "Swim",      "Swim",    "Swim",   "Swim"),
+  c("Interact", "Distorted", "Location", "Blurry", "Double"),
+  
+  run_wilcox_test,
+  
+  data = data.matrix(NatPerceptQs_col[(NatPerceptQs_col[,1]>1),2:7])
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+## Naturalistic Dizziness post-hoc analysis 
+# Physical symptoms pooled across all lenses (excluding 0%)
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatSymp_HDN_col[(NatSymp_HDN_col[,1]>1),2:4]) #runs function that creates a table with mean and medians
+
+```
+
+### Friedman Test - symptoms across all lenses (excluding 0%)
+```{r, warning=FALSE, echo=FALSE}
+
+NatSymp_FR = friedman.test(data.matrix(NatSymp_HDN_col[(NatSymp_HDN_col[,1]>1),2:4]))
+kable(tidy(NatSymp_FR))
+
+```
+### Paired Wilcox Tests - Just dizziness comparisions
+```{r,warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("Dizziness", "Dizziness"),
+  c("Headache", "Nausea"),
+  
+  run_wilcox_test,
+  
+  data = NatSymp_HDN_col[(NatSymp_HDN_col[,1]>1),2:4]
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+# VOMS Exploritory Anlysis
+## Dizzyness across lenses (excluding 0,0)
+##### investigating if certain eye/head movements are more likely to produce dizzyness
+```{r, warning=FALSE,echo=FALSE}
+
+mean_and_median_table(VOMSSymp_D[(VOMSSymp_D[,1]>1),3:7]) #runs function that creates a table with mean and medians
+
+```
+### VOMS Dizzyness across lenses (excluding 0,0) - Friedman test
+```{r, warning=FALSE, echo=FALSE}
+VOMSSymp_D_FR = friedman.test(data.matrix(VOMSSymp_D[(VOMSSymp_D[,1]>1),3:7]))
+kable(tidy(VOMSSymp_D_FR))
+```
+### VOMS Dizzyness across lenses (excluding 0,0)- Paired Wilcox Tests 
+```{r,warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("pursuit", "pursuit", "pursuit", "pursuit", "saccades", "saccades", "saccades", "converge","converge", "VOR"),
+  c("saccades", "converge", "VOR",     "MS",    "converge",   "VOR",       "MS",       "VOR",     "MS" ,    "MS"),
+  
+  run_wilcox_test,
+  
+  data = VOMSSymp_D[(VOMSSymp_D[,1]>1),3:7]
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+
+
+
+
+
+
+# Phoria Exploritory Analysis 
+## Horizontal initial phoria
+##### we subtract the pre-baseline phoria for horizontal and vertical measurements.
+##### We want to know if the differences between lenses is significant for the different
+##### head tern conditions.
+
+## Two-way ANOVA
+```{r, warning=FALSE,echo=FALSE}
+
+NatHPhoria_diff_ANOVA$subj = as.factor(NatHPhoria_diff_ANOVA$subj)
+NatHPhoria_diff_ANOVA$lenses = as.factor(NatHPhoria_diff_ANOVA$lenses)
+NatHPhoria_diff_ANOVA$headturn = as.factor(NatHPhoria_diff_ANOVA$headturn)
+#two way anova that looks at significance of lenses and head turn and looks at
+#whether there is a significant interaction.
+res.aov2 = aov( resp ~ lenses * headturn + Error(subj), data = NatHPhoria_diff_ANOVA)
+#The * in the script indicates that we want to compute the interaction. Replacing it with
+#+ would give you just the significant main effect.
+summary(res.aov2)
+
+```
+#CHECK FOR HOMOGENEITY by running the Leven test. 
+```{r, warning=FALSE, echo=FALSE}
+
+res_leven = leveneTest(resp ~ lenses , data = NatHPhoria_diff_ANOVA)
+# it is significant which means that there is different levels of variance 
+#in the groups. So, we will run a permutation ANOVA which are not based on 
+#assumptions of homogeneity to see if we get the same results. 
+res = aovp( resp ~ lenses * headturn + Error(subj), data = NatHPhoria_diff_ANOVA)
+summary(res)
+# The same results are significant so we will just present the results of the 
+# original ANOVA in text. 
+
+```
+
+
+##### for horizontal I am only going to test comparisons for straight right and left
+##### Testing the up and down is less important. 
+
+### Straight - horizontal phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_s) #runs function that creates a table with mean and medians
+
+```
+### Straight - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_s
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+
+```
+### Right gaze - horizontal phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_r) #runs function that creates a table with mean and medians
+
+```
+### Right gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_r
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+### Left gaze - Horizontal phoria - Mean and Median
+```{r, warning=FALSE,echo=FALSE}
+
+mean_and_median_table(NatHPhoria_l) #runs function that creates a table with mean and medians
+
+```
+### Left gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+   c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+   c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  
+  run_ttest_test,
+
+  data = NatHPhoria_l
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+### Upward gaze - Horizontal phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_u) #runs function that creates a table with mean and medians
+
+```
+### Upward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+   c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+   c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  
+  run_ttest_test,
+
+  data = NatHPhoria_u
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+### Downward gaze - Horizontal phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_d) #runs function that creates a table with mean and medians
+
+```
+### Downward gaze - paired t-tests
+```{r, warning=TRUE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_ttest_test,
+
+  data = NatHPhoria_d
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+## Vertical initial phoria
+## Two-way ANOVA
+```{r, warning=FALSE,echo=FALSE}
+
+NatVPhoria_diff_ANOVA$subj = as.factor(NatVPhoria_diff_ANOVA$subj)
+NatVPhoria_diff_ANOVA$lenses = as.factor(NatVPhoria_diff_ANOVA$lenses)
+NatVPhoria_diff_ANOVA$headturn = as.factor(NatVPhoria_diff_ANOVA$headturn)
+#two way anova that looks at significance of lenses and head turn and looks at
+#whether there is a significant interaction.
+res.aov2 = aov( resp ~ lenses * headturn + Error(subj), data = NatVPhoria_diff_ANOVA)
+summary(res.aov2)
+
+```
+#CHECK FOR HOMOGENEITY by running the Leven test. 
+```{r, warning=FALSE, echo=FALSE}
+
+res_leven = leveneTest(resp ~ lenses , data = NatVPhoria_diff_ANOVA)
+# it is significant which means that there is different levels of variance 
+#in the groups. So, we will run a permutation ANOVA which are not based on 
+#assumptions of homogeneity to see if we get the same results. 
+res = aovp( resp ~ lenses * headturn + Error(subj), data = NatVPhoria_diff_ANOVA)
+summary(res)
+# The same results are significant so we will onlyW present the results of the 
+# original ANOVA in text. 
+
+```
+
+
+### straight vertical phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_s) #runs function that creates a table with mean and medians
+
+```
+### straight - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_s
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### Up gaze - vertical phoria - Mean and Median
+```{r, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_u) #runs function that creates a table with mean and medians
+
+```
+### up gaze - paired t-tests
+```{r,warning=FALSE, warning=TRUE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_u
+) %>% #%>% takes this output and puts it into next input
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### down gaze - vertical phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_d) #runs function that creates a table with mean and medians
+
+```
+### down gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_d
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### leftward gaze - vertical phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_l) #runs function that creates a table with mean and medians
+
+```
+### leftward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_l
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+### rightward gaze - vertical phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_r) #runs function that creates a table with mean and medians
+
+```
+### rightward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_r
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+## Phoria Adaptation
+## Two-way ANOVA Horizontal phoria
+```{r,warning=FALSE, echo=FALSE}
+
+#head tern conditions.
+NatHPhoria_adapt_ANOVA$subj     = as.factor(NatHPhoria_adapt_ANOVA$subj)
+NatHPhoria_adapt_ANOVA$lenses   = as.factor(NatHPhoria_adapt_ANOVA$lenses)
+NatHPhoria_adapt_ANOVA$headturn = as.factor(NatHPhoria_adapt_ANOVA$headturn)
+#two way anova that looks at significance of lenses and head turn and looks at
+#whether there is a significant interaction.
+res.aov2 = aov( resp ~ lenses * headturn + Error(subj), data = NatHPhoria_adapt_ANOVA)
+summary(res.aov2)
+
+```
+#CHECK FOR HOMOGENEITY by running the Leven test. 
+```{r, warning=FALSE, echo=FALSE}
+
+res_leven = leveneTest(resp ~ lenses , data = NatHPhoria_adapt_ANOVA)
+# it is significant which means that there is different levels of varience 
+#in the groups. So, we will run a permutation ANOVA which are not based on 
+#assumptions of homogeneity to see if we get the same results. 
+res = aovp( resp ~ lenses * headturn + Error(subj), data = NatHPhoria_adapt_ANOVA)
+summary(res)
+# The same results are significant so we will just present the results of the 
+# original ANOVA in text. 
+
+```
+
+### straight Horizontal phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_adapt_s) #runs function that creates a table with mean and medians
+
+```
+### straight - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_adapt_s
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### rightward gaze Horizontal phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_adapt_r) #runs function that creates a table with mean and medians
+
+```
+### rightward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_adapt_r
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### leftward gaze Horizontal phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_adapt_l) #runs function that creates a table with mean and medians
+
+```
+### leftward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_adapt_l
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### upward gaze Horizontal phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_adapt_u) #runs function that creates a table with mean and medians
+
+```
+### upward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatHPhoria_adapt_u
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### downward gaze Horizontal phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatHPhoria_adapt_d) #runs function that creates a table with mean and medians
+
+```
+### downward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_ttest_test,
+
+  data = NatHPhoria_adapt_d
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+## Phoria Adaptation - vertical phoria
+## Two-way ANOVA Vertical phoria
+```{r, warning=FALSE, echo=FALSE}
+
+#head tern conditions.
+NatVPhoria_adapt_ANOVA$subj     = as.factor(NatVPhoria_adapt_ANOVA$subj)
+NatVPhoria_adapt_ANOVA$lenses   = as.factor(NatVPhoria_adapt_ANOVA$lenses)
+NatVPhoria_adapt_ANOVA$headturn = as.factor(NatVPhoria_adapt_ANOVA$headturn)
+#two way anova that looks at significance of lenses and head turn and looks at
+#whether there is a significant interaction.
+res.aov2 = aov( resp ~ lenses * headturn + Error(subj), data = NatVPhoria_adapt_ANOVA)
+summary(res.aov2)
+
+```
+#CHECK FOR HOMOGENEITY by running the Leven test. 
+```{r, warning=FALSE, echo=FALSE}
+
+res_leven = leveneTest(resp ~ lenses , data = NatVPhoria_adapt_ANOVA)
+# it is significant which means that there is different levels of varience 
+#in the groups. So, we will run a permutation ANOVA which are not based on 
+#assumptions of homogeneity to see if we get the same results. 
+res = aovp( resp ~ lenses * headturn + Error(subj), data = NatVPhoria_adapt_ANOVA)
+summary(res)
+# The same results are significant so we will just present the results of the 
+# original ANOVA in text. 
+
+```
+
+### straightward gaze Vertical phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_adapt_s) #runs function that creates a table with mean and medians
+
+```
+### straightward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_adapt_s
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+### upward gaze Vertical phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_adapt_u) #runs function that creates a table with mean and medians
+
+```
+### upward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_adapt_u
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### downward gaze Vertical phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_adapt_d) #runs function that creates a table with mean and medians
+
+```
+### downward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  #Cannot run the combination of 00vs02 because Cohan's D can't be computed
+  # because the standard deviation of something is zero.
+  
+   c("X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+   c("X22", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_adapt_d
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+### leftward gaze Vertical phoria - Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_adapt_l) #runs function that creates a table with mean and medians
+
+```
+### leftward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_adapt_l
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+### rightward gaze Vertical phoria - Mean and Median
+```{r,warning=FALSE, echo=FALSE}
+
+mean_and_median_table(NatVPhoria_adapt_r) #runs function that creates a table with mean and medians
+
+```
+### rightward gaze - paired t-tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+
+  run_ttest_test,
+
+  data = NatVPhoria_adapt_r
+) %>% #%>% takes this output and puts it into next
+
+  #Correct p values. this is performed after because we need all of the p values in
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+
+  kable() #makes table come out as html
+```
+
+
+## SSQ and Naturalistic Comfort 
+### Dizziness & SSQ - Spearman correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04"),
+  c("SSQ","SSQ","SSQ","SSQ","SSQ"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatSymp_D,SSQ) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+
+
+```
+### Headache & SSQ - Spearman correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04"),
+  c("SSQ","SSQ","SSQ","SSQ","SSQ"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatSymp_H,SSQ) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+### Nausia & SSQ - Spearman correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04"),
+  c("SSQ","SSQ","SSQ","SSQ","SSQ"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatSymp_N,SSQ) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+
+
+## 6m Fusional reserve and eyestrain correlation
+### 6m Horizontal fusional reserve & eye strain
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+   c("X00",      "X22",   "X02",    "X44",     "X04",    "X00",      "X22",    "X02",     "X44",      "X04"),
+  c("Diverge","Diverge","Diverge","Diverge","Diverge","Converge","Converge","Converge", "Converge","Converge"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(FR_H_6m,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+### 6m Vertical fusional reserve & eye strain
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+   c("X00",      "X22",   "X02",    "X44",     "X04",    "X00",      "X22",    "X02",     "X44",      "X04"),
+  c("Diverge","Diverge","Diverge","Diverge","Diverge","Converge","Converge","Converge", "Converge","Converge"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(FR_V_6m,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+## 40cm Fusional reserve and eyestrain
+### 40cm Horizontal fusional reserve & eye strain
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+   c("X00",      "X22",   "X02",    "X44",     "X04",    "X00",      "X22",    "X02",     "X44",      "X04"),
+  c("Diverge","Diverge","Diverge","Diverge","Diverge","Converge","Converge","Converge", "Converge","Converge"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(FR_H_40cm,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+### 40cm Vertical fusional reserve & eye strain correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+   c("X00",      "X22",   "X02",    "X44",     "X04",    "X00",      "X22",    "X02",     "X44",      "X04"),
+  c("Diverge","Diverge","Diverge","Diverge","Diverge","Converge","Converge","Converge", "Converge","Converge"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(FR_V_40cm,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+## Baseline phoria & eyestrain correlation
+### H & V Phoria at 40cm & eyestrain correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04","X00","X22","X02","X44","X04"),
+  c("H","H","H","H","H","V","V","V","V","V"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatPhoria_base_40cm,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+### H & V Phoria at 1m & eyestrain correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04","X00","X22","X02","X44","X04"),
+  c("H","H","H","H","H","V","V","V","V","V"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatPhoria_base_1m,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+### H & V Phoria at 6m & eyestrain correlation
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+ 
+  c("X00","X22","X02","X44","X04","X00","X22","X02","X44","X04"),
+  c("H","H","H","H","H","V","V","V","V","V"),
+  
+  run_spearman_cor,
+  
+  data = bind_cols(NatPhoria_base_6m,Nateyestrain) #merge date frames so that it is easier to run comparisons
+
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```

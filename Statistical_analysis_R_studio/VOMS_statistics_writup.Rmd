@@ -1,0 +1,397 @@
+---
+title: "Controlled head and eye movement statistics"
+author: "Iona McLean"
+date: "2022-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+#Load in packages
+library(stats)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(reshape2)#used for Cochran Q
+library(psych)#used for Cochran Q
+library(RVAideMemoire)#Cochran Q
+library(ez) # within subjects anova
+library(knitr) # makes nicely formatted tables
+library(scales) # nicely formatted numbers
+library(rstudioapi)   
+
+#load the data 
+VOMSSymp     = read.csv(file='./data/VOMSSymp.csv',header=TRUE)
+VOMSrankwear = read.csv(file='./data/VOMSrankwear.csv',header=TRUE)
+
+#label the data
+#Note: these values are already subtracted by the baseline and the median was taken for each participant between H,D,N symptoms
+VOMS_pursuit  = VOMSSymp[(VOMSSymp$eyemove == 1),2:6] #col=glasses row=all HDN for all subjects
+VOMS_saccades = VOMSSymp[(VOMSSymp$eyemove == 2),2:6]
+VOMS_converge = VOMSSymp[(VOMSSymp$eyemove == 3),2:6]
+VOMS_VOR      = VOMSSymp[(VOMSSymp$eyemove == 4),2:6]
+VOMS_ms       = VOMSSymp[(VOMSSymp$eyemove == 5),2:6]
+VOMSrank      = VOMSrankwear[(VOMSrankwear$measure == 1),2:6]
+VOMSwear      = VOMSrankwear[(VOMSrankwear$measure == 2),2:6]
+
+
+################# FUNCTION USED FOR MEAN MEDIAN CREATION
+
+#Function for a mean and median table. Input a data matrix with responses for each lens
+mean_and_median_table = function(data) {
+
+  N = 40
+  Mean_all   = tidy(apply(data,2,mean)) #I need tidy to create the table/data frame thing
+  Median_all = apply(data,2,median)
+  SD_all     = apply(data,2,sd)
+  CI_all     = (1.96 * SD_all) / sqrt(N)
+
+  rename(Mean_all, M = x) %>% #rename mean column to M
+  mutate(Mean_all, Mdn = Median_all, CI_95 = CI_all) %>% #add column with median values named Mdn
+
+  select(names,M,Mdn,CI_95) %>% 
+    
+  kable() #makes the table output in the html
+  
+}
+
+################ FUNCTIONS FOR WILCOXON TESTS 
+
+# Run Wilcox test, calculate effect size
+# and Tidy the table and rename or add columns for V,Z,N,r
+make_wilcox_table = function(a, b) {
+  
+ this_test = wilcox.test(a, b, paired = TRUE) #it has a continuity correction
+ # we decided to use wilcox.test, instead of wilcox_test because it seems to be more common
+ # and has continuity correction. The Z values produced in each are slightly different 
+ # likely due to the various corrections
+ 
+    this_test_tidy   = tidy(this_test) 
+    this_test_tidy_v = rename(this_test_tidy, V = statistic)  #renames "statistic" as "V" in the next line
+    #add columns to store the Z,N,and r values.
+    mutate(this_test_tidy_v,
+      V = label_number(accuracy = 0.001)(V),
+      Z = qnorm(p.value/2),
+      N = length(a),
+      r = abs(Z) / sqrt(N) 
+    ) 
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test
+# %>% puts current output as first next input
+run_wilcox_test <- function (len1_str, len2_str, data) { 
+  
+  test_out = make_wilcox_table(data[,len1_str], data[,len2_str])  #run previous function that runs willcox test 
+    
+    mutate(test_out, Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,V,N,Z,r,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+
+################ FUNCTIONS FOR McNemar TESTS 
+
+# Run Mcnemar test, calculate effect size
+mcnemar_test = function(a, b) {
+  
+  this_test = mcnemar.test(a,b, correct = TRUE)
+
+    this_test_tidy     = tidy(this_test) 
+    
+    this_test_tidy_chi = rename(this_test_tidy, chi_sqared = statistic) #rename the statistic chi_squared
+    
+    #effect size - odds ratio #there is not a good consensus on the best effect 
+    #size measure to use
+    #take the lens that we hypothesize more people will be wiling to wear and 
+    # divide it by the group we hypothesize will have less yeses. The group that we 
+    # think will always have more "yeses" happens to always be the first lens string 
+    #size value will always be greater than 1. 
+    Odds_ratio = (sum(a) / sum(b)) #ratio of the people who said yes to Lens1 vs Lens2
+  
+   #add columns to store the effect size
+   mutate(this_test_tidy_chi, Odds_ratio = Odds_ratio) 
+}
+
+
+# Input name of lens conditions you want to compare, use the function above to add 
+# the desired columns and run the wilcox test # %>% puts current output as first next input
+run_mcnemar_test_and_table <- function (len1_str, len2_str, data) { 
+  
+  mcnemar_test(data[,len1_str], data[,len2_str])%>%  #run previous function to run the statistical test
+    
+    mutate(Comparison = str_c(len1_str, " vs ", len2_str)) %>% #add column with comparison
+    
+    select(Comparison,chi_sqared,df = parameter, Odds_ratio,`Original P Value` = p.value) #keeps only variables mentioned
+}
+
+
+########### PERCENT AND BINOMIAL CI FOR PERCENT FOR Y/N QUESTION
+do_binomial_test <- function(cond, thisdata, ...) { #... allows extra variables to pass to the binomial function
+  binom.test( sum(thisdata[,cond]) , n = length(thisdata[,cond]), ... ) %>%
+    tidy()
+}
+
+```
+
+# Pursuit VOMS- Physical Comfort 
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(VOMS_pursuit) #runs function that creates a table with mean and medians
+
+```
+
+## Friedman Test 
+```{r, warning=FALSE, echo=FALSE}
+
+#VOMS PHYSICAL COMFORT
+VOMS_pursuit_FR = friedman.test(data.matrix(VOMS_pursuit)) #input must be a matrix
+kable(tidy(VOMS_pursuit_FR))
+
+```
+
+## Paired Wilcox Tests
+
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMS_pursuit
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+# Saccades VOMS - Physical Comfort
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+
+mean_and_median_table(VOMS_saccades) #runs function that creates a table with mean and medians
+```
+## Friedman Test
+```{r, warning=FALSE, echo=FALSE}
+
+VOMS_saccades_FR = friedman.test(data.matrix(VOMS_saccades))
+kable(tidy(VOMS_saccades_FR))
+```
+## Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMS_saccades
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+
+# Convergence VOMS - Physical Comfort 
+## Mean and Median 
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(VOMS_converge) #runs function that creates a table with mean and medians
+```
+## Friedman Test 
+```{r, warning=TRUE, echo=FALSE}
+VOMS_converge_FR = friedman.test(data.matrix(VOMS_converge))
+kable(tidy(VOMS_converge_FR))
+```
+## Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMS_converge
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+```
+
+
+# VOR VOMS - Physical Comfort 
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(VOMS_VOR) #runs function that creates a table with mean and medians
+```
+## Friedman Test 
+```{r, warning=FALSE, echo=FALSE}
+VOMS_VOR_FR = friedman.test(data.matrix(VOMS_VOR))
+kable(tidy(VOMS_VOR_FR))
+```
+### Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMS_VOR
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
+
+
+# Visual Motion Sensitivity VOMS- Physical Comfort 
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(VOMS_ms) #runs function that creates a table with mean and medians
+```
+## Friedman Test 
+```{r, warning=FALSE, echo=FALSE}
+VOMS_ms_FR = friedman.test(data.matrix(VOMS_ms))
+kable(tidy(VOMS_ms_FR))
+```
+## Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMS_ms
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+```
+
+
+# Comfort Rank
+## Mean and Median
+```{r, warning=FALSE, echo=FALSE}
+mean_and_median_table(VOMSrank) #runs function that creates a table with mean and medians
+```
+
+## Friedman Test 
+```{r, warning=FALSE, echo=FALSE}
+VOMSrank_FR = friedman.test(data.matrix(VOMSrank))
+kable(tidy(VOMSrank_FR))
+```
+## Paired Wilcox Tests
+```{r, warning=FALSE, echo=FALSE}
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_wilcox_test,
+  
+  data = VOMSrank
+) %>% #%>% takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+```
+
+
+# Wear on a regular basis? (Y/N)
+## Median and binomial CI
+```{r, warning=FALSE, echo=FALSE}
+
+conds = c("X00", "X22", "X02", "X44", "X04") #defines condition we iterate over
+conds %>% #inputs conditions into next function
+  map_df(                    #iterates over conditions in first input(i.e.cond)
+    do_binomial_test,        #runs function at the top
+    thisdata    = VOMSwear,
+    p           = 0.05,
+    alternative = "two.sided"
+  ) %>%
+  mutate(
+    condition = conds,
+    percent_yes  = percent_format(accuracy = 0.001)(estimate), #percent_format is a function to format percents
+    low_95pctCI  = percent_format(accuracy = 0.001)(conf.low),
+    high_95pctCI = percent_format(accuracy = 0.001)(conf.high),
+    range_95pCI  = percent_format(accuracy = 0.001)(conf.high - conf.low)
+    
+  ) %>%
+  #select columns you want in table
+  select(condition, percent_yes, low_95pctCI, high_95pctCI,range_95pCI) %>%
+  kable()
+
+```
+
+## Cochran Q
+```{r, warning=FALSE, echo=FALSE}
+VOMSwear_q       = melt(data.matrix(VOMSwear)) #reshape the data 
+vomswear_cochran = cochran.qtest(value ~ Var2 | Var1, data = VOMSwear_q)
+kable(tibble(
+  "test"    = vomswear_cochran$method.test,
+  "Q"       = vomswear_cochran$statistic,
+  "df"      = vomswear_cochran$parameter,
+  "p-value" = format(vomswear_cochran$p.value, scientific = TRUE)
+))
+
+
+```
+## Mcnemar test 
+```{r, warning=FALSE, echo=FALSE}
+# A routine to iterate over pairs of tests
+map2_df(
+  c("X00", "X00", "X00", "X00", "X22", "X44", "X22", "X02"),
+  c("X22", "X02", "X44", "X04", "X02", "X04", "X44", "X04"),
+  
+  run_mcnemar_test_and_table,
+  
+  data = VOMSwear
+) %>% # takes this output and puts it into next 
+  
+  #Correct p values. this is performed after because we need all of the p values in 
+  # one matrix to perform the correction
+  mutate( `Corrected P Value` = p.adjust(`Original P Value`, method = "fdr") ) %>% #adding a column for corrected p value
+  
+  kable() #makes table come out as html
+
+```
